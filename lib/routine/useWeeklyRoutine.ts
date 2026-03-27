@@ -5,27 +5,41 @@ import type { DayOfWeek, DayRoutine, RoutineSettings, WeeklyRoutine } from './ty
 import { createDefaultRoutineSettings, createEmptyWeeklyRoutine } from './defaults'
 import { loadRoutineFromSupabase, saveRoutineToSupabase } from './supabaseRepo'
 
+function stableStringify(value: unknown): string {
+  if (value === null) return 'null'
+  if (typeof value !== 'object') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
+
+  const obj = value as Record<string, unknown>
+  const keys = Object.keys(obj).sort()
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`
+}
+
+function routineSnapshot(weeklyRoutine: WeeklyRoutine, settings: RoutineSettings) {
+  // Stable across object key insertion order (prevents false "dirty" state).
+  return stableStringify({ weeklyRoutine, settings })
+}
+
 export function useWeeklyRoutine() {
-  const [routineId, setRoutineId] = useState<string | null>(null)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const [error, setError] = useState<string | null>(null)
 
   const [weeklyRoutine, setWeeklyRoutine] = useState<WeeklyRoutine>(() => createEmptyWeeklyRoutine())
   const [settings, setSettings] = useState<RoutineSettings>(() => createDefaultRoutineSettings())
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null)
+  const [persistedSnapshot, setPersistedSnapshot] = useState<string | null>(null)
+
+  const [hasStartedLoading, setHasStartedLoading] = useState(false)
 
   const ensureIdentityAndLoad = useCallback(async () => {
     try {
       setStatus('loading')
       setError(null)
-      const res = await fetch('/api/routine/identity', { method: 'GET' })
-      if (!res.ok) throw new Error(`Failed to get identity (${res.status})`)
-      const json = (await res.json()) as { routineId: string }
-      setRoutineId(json.routineId)
-
-      const loaded = await loadRoutineFromSupabase(json.routineId)
+      const loaded = await loadRoutineFromSupabase()
       setWeeklyRoutine(loaded.weeklyRoutine)
       setSettings(loaded.settings)
+      setPersistedSnapshot(routineSnapshot(loaded.weeklyRoutine, loaded.settings))
+      setLastSavedAt(loaded.updatedAt ? new Date(loaded.updatedAt).getTime() : null)
       setStatus('ready')
     } catch (e) {
       setStatus('error')
@@ -34,14 +48,18 @@ export function useWeeklyRoutine() {
   }, [])
 
   useEffect(() => {
+    if (hasStartedLoading) return
+    setHasStartedLoading(true)
     void ensureIdentityAndLoad()
-  }, [ensureIdentityAndLoad])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasStartedLoading])
 
   const saveAll = useCallback(async () => {
-    if (!routineId) return
-    await saveRoutineToSupabase({ routineId, weeklyRoutine, settings })
-    setLastSavedAt(Date.now())
-  }, [routineId, weeklyRoutine, settings])
+    await saveRoutineToSupabase({ weeklyRoutine, settings })
+    const now = Date.now()
+    setLastSavedAt(now)
+    setPersistedSnapshot(routineSnapshot(weeklyRoutine, settings))
+  }, [weeklyRoutine, settings])
 
   const persistSettings = useCallback((next: RoutineSettings) => setSettings(next), [])
 
@@ -51,14 +69,19 @@ export function useWeeklyRoutine() {
 
   const getDay = useCallback((day: DayOfWeek) => weeklyRoutine[day], [weeklyRoutine])
 
+  const isDirty = useMemo(() => {
+    if (persistedSnapshot === null) return false
+    return routineSnapshot(weeklyRoutine, settings) !== persistedSnapshot
+  }, [weeklyRoutine, settings, persistedSnapshot])
+
   const api = useMemo(
     () => ({
-      routineId,
       status,
       error,
       weeklyRoutine,
       settings,
       lastSavedAt,
+      isDirty,
       updateDay,
       getDay,
       setWeeklyRoutine,
@@ -67,12 +90,12 @@ export function useWeeklyRoutine() {
       reload: ensureIdentityAndLoad,
     }),
     [
-      routineId,
       status,
       error,
       weeklyRoutine,
       settings,
       lastSavedAt,
+      isDirty,
       updateDay,
       getDay,
       persistSettings,

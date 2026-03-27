@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Link from "next/link";
+import { AuthStatus } from "./components/auth/AuthStatus";
+import { MobileTabs } from "./components/nav/MobileTabs";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +31,29 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        {children}
+        <header className="border-b border-foreground/10">
+          <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-4">
+            <div className="flex items-center gap-4">
+              <Link href="/" className="text-sm font-semibold tracking-wide">
+                Gym Tracker
+              </Link>
+              <nav className="hidden items-center gap-2 text-sm text-foreground/70 sm:flex">
+                <Link href="/planner" className="rounded-md px-2 py-1 hover:bg-foreground/10">
+                  Planner
+                </Link>
+                <Link href="/log" className="rounded-md px-2 py-1 hover:bg-foreground/10">
+                  Log
+                </Link>
+                <Link href="/log/history" className="rounded-md px-2 py-1 hover:bg-foreground/10">
+                  History
+                </Link>
+              </nav>
+            </div>
+            <AuthStatus />
+          </div>
+        </header>
+        <div className="flex-1 pb-20 sm:pb-0">{children}</div>
+        <MobileTabs />
       </body>
     </html>
   );

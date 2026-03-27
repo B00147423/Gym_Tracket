@@ -6,7 +6,6 @@ import { RoutineEditor } from '@/app/components/routine/RoutineEditor'
 import { ReminderToggle } from '@/app/components/routine/ReminderToggle'
 import { Button } from '@/app/components/ui/Button'
 import type { DayOfWeek } from '@/lib/routine/types'
-import { DAYS } from '@/lib/routine/types'
 import { getTodayDayOfWeek } from '@/lib/routine/date'
 import { maybeNotifyToday } from '@/lib/routine/notifications'
 import { useWeeklyRoutine } from '@/lib/routine/useWeeklyRoutine'
@@ -16,7 +15,6 @@ export default function RoutineBuilderPage() {
   const today = useMemo(() => getTodayDayOfWeek(), [])
 
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('Monday')
-  const [saveState, setSaveState] = useState<'idle' | 'saved'>('idle')
 
   useEffect(() => {
     // On first load, default to today for better UX.
@@ -24,22 +22,30 @@ export default function RoutineBuilderPage() {
   }, [today])
 
   useEffect(() => {
+    if (routine.status !== 'ready') return
     maybeNotifyToday({
       today,
       todayRoutine: routine.weeklyRoutine[today],
       settings: routine.settings,
       onSettingsChange: routine.setSettings,
     })
-  }, [today, routine.weeklyRoutine, routine.settings, routine.setSettings])
-
-  useEffect(() => {
-    if (routine.lastSavedAt == null) return
-    setSaveState('saved')
-    const t = window.setTimeout(() => setSaveState('idle'), 1500)
-    return () => window.clearTimeout(t)
-  }, [routine.lastSavedAt])
+  }, [today, routine.weeklyRoutine, routine.settings, routine.setSettings, routine.status])
 
   const dayValue = routine.weeklyRoutine[selectedDay]
+
+  if (routine.status !== 'ready') {
+    return (
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10">
+        <div className="rounded-xl border border-foreground/10 bg-foreground/5 p-5 text-sm text-foreground/60">
+          {routine.status === 'loading'
+            ? 'Loading…'
+            : routine.error
+              ? `Error: ${routine.error}`
+              : 'Please log in to edit your routine.'}
+        </div>
+      </main>
+    )
+  }
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
@@ -54,6 +60,14 @@ export default function RoutineBuilderPage() {
         <div className="flex items-center gap-2">
           <Button type="button" variant="ghost" onClick={() => setSelectedDay(today)}>
             Jump to today
+          </Button>
+          <Button
+            type="button"
+            variant={routine.isDirty ? 'primary' : 'secondary'}
+            disabled={!routine.isDirty}
+            onClick={() => routine.saveAll()}
+          >
+            Save all
           </Button>
         </div>
       </div>
@@ -72,23 +86,10 @@ export default function RoutineBuilderPage() {
             day={selectedDay}
             value={dayValue}
             onChange={(next) => routine.updateDay(selectedDay, next)}
-            onSave={() => {
-              routine.saveAll()
-              setSaveState('saved')
-            }}
-            saveState={saveState}
+            onSave={() => routine.saveAll()}
+            hasUnsavedChanges={routine.isDirty}
+            lastSavedAtMs={routine.lastSavedAt}
           />
-
-          <div className="rounded-xl border border-foreground/10 bg-foreground/5 p-4">
-            <div className="text-xs font-semibold tracking-wide text-foreground/60">QUICK NAV</div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {DAYS.map((d) => (
-                <Button key={d} type="button" variant={d === selectedDay ? 'primary' : 'secondary'} onClick={() => setSelectedDay(d)}>
-                  {d.slice(0, 3)}
-                </Button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </main>

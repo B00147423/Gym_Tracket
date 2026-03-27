@@ -6,12 +6,20 @@ import { Input } from '../ui/Input'
 import { newId } from '@/lib/routine/id'
 import { ExerciseCard } from './ExerciseCard'
 
+function formatSavedAt(ms: number) {
+  return new Date(ms).toLocaleString(undefined, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
+}
+
 export function RoutineEditor(props: {
   day: DayOfWeek
   value: DayRoutine
   onChange: (next: DayRoutine) => void
-  onSave: () => void
-  saveState: 'idle' | 'saved'
+  onSave: () => void | Promise<void>
+  hasUnsavedChanges: boolean
+  lastSavedAtMs: number | null
 }) {
   const value = props.value
 
@@ -26,12 +34,16 @@ export function RoutineEditor(props: {
           <div className="text-xl font-semibold">{props.day}</div>
         </div>
         <div className="flex items-center gap-2">
-          {props.saveState === 'saved' ? (
-            <div className="text-xs text-foreground/60">Saved</div>
+          {props.hasUnsavedChanges ? (
+            <div className="text-xs font-medium text-amber-600 dark:text-amber-400">Unsaved changes</div>
+          ) : props.lastSavedAtMs ? (
+            <div className="text-xs text-emerald-600 dark:text-emerald-400">
+              All saved · {formatSavedAt(props.lastSavedAtMs)}
+            </div>
           ) : (
-            <div className="text-xs text-foreground/40">Not saved</div>
+            <div className="text-xs text-foreground/60">Up to date</div>
           )}
-          <Button type="button" variant="primary" onClick={props.onSave}>
+          <Button type="button" variant="primary" onClick={() => void props.onSave()}>
             Save day
           </Button>
         </div>
