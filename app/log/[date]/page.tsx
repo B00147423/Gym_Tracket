@@ -5,13 +5,19 @@ import { useParams } from 'next/navigation'
 import { Button } from '@/app/components/ui/Button'
 import { Textarea } from '@/app/components/ui/Textarea'
 import { Modal } from '@/app/components/ui/Modal'
-import type { WorkoutLog } from '@/lib/log/types'
+import type { LoggedExercise, WorkoutLog } from '@/lib/log/types'
 import {
   loadWorkoutLogByDate,
   saveWorkoutLog,
   buildDefaultLogForDate,
   listExerciseHistory,
+  loadLastPerformancesBeforeDate,
 } from '@/lib/log/supabaseRepo'
+import {
+  summarizeExerciseLog,
+  summarizeExerciseLogDetailed,
+  weightProgressVsLast,
+} from '@/lib/log/performedSets'
 import { useWeeklyRoutine } from '@/lib/routine/useWeeklyRoutine'
 
 function isISODate(s: string): boolean {
@@ -38,8 +44,9 @@ export default function WorkoutLogDayPage() {
   const [historyStatus, setHistoryStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [historyError, setHistoryError] = useState<string | null>(null)
   const [historyItems, setHistoryItems] = useState<
-    Array<{ workoutDate: string; workoutName: string; entry: { performedText?: string } | null }>
+    Array<{ workoutDate: string; workoutName: string; entry: LoggedExercise | null }>
   >([])
+  const [lastByExerciseId, setLastByExerciseId] = useState<Record<string, LoggedExercise | null>>({})
 
   const canLoad = useMemo(() => !!workoutDate && isISODate(workoutDate) && routine.status === 'ready', [workoutDate, routine.status])
 
@@ -100,6 +107,22 @@ export default function WorkoutLogDayPage() {
       cancelled = true
     }
   }, [canLoad, workoutDate, routine.weeklyRoutine])
+
+  useEffect(() => {
+    if (!log || log.restDay || !workoutDate || log.exercises.length === 0) return
+    let cancelled = false
+    const ids = log.exercises.map((e) => e.exerciseId)
+    loadLastPerformancesBeforeDate({ workoutDate, exerciseIds: ids })
+      .then((m) => {
+        if (!cancelled) setLastByExerciseId(m)
+      })
+      .catch(() => {
+        if (!cancelled) setLastByExerciseId({})
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [log?.workoutDate, log?.restDay, log?.exercises.length, workoutDate])
 
   if (!workoutDate || !isISODate(workoutDate)) {
     return (
@@ -201,7 +224,11 @@ export default function WorkoutLogDayPage() {
                   No planned exercises for this day. Add them in the planner.
                 </div>
               ) : (
-                log.exercises.map((ex, idx) => (
+                log.exercises.map((ex, idx) => {
+                  const lastEx = lastByExerciseId[ex.exerciseId]
+                  const lastLine = lastEx ? summarizeExerciseLog(lastEx) : ''
+                  const progressHint = weightProgressVsLast(ex, lastEx ?? null)
+                  return (
                   <div
                     key={ex.exerciseId}
                     className={`rounded-xl border bg-foreground/5 p-5 transition-colors ${
@@ -214,8 +241,19 @@ export default function WorkoutLogDayPage() {
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold">{ex.name || `Exercise ${idx + 1}`}</div>
                         <div className="mt-1 text-xs text-foreground/60">
-                          Planned: {ex.plannedSets || '—'} sets × {ex.plannedReps || '—'} reps
+                          Planned: {ex.plannedSets || '—'} × {ex.plannedReps || '—'}
                         </div>
+                        {lastLine ? (
+                          <div className="mt-2 text-sm text-violet-300/95">
+                            <span className="text-foreground/50">Last: </span>
+                            {lastLine}
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-xs text-foreground/45">No earlier log for this lift.</div>
+                        )}
+                        {progressHint ? (
+                          <div className="mt-1 text-xs font-semibold text-emerald-400/95">{progressHint}</div>
+                        ) : null}
                         {ex.plannedComments ? (
                           <div className="mt-1 text-xs text-foreground/60">{ex.plannedComments}</div>
                         ) : null}
@@ -233,7 +271,7 @@ export default function WorkoutLogDayPage() {
                                   items.map((it) => ({
                                     workoutDate: it.workoutDate,
                                     workoutName: it.workoutName,
-                                    entry: (it.entry as { performedText?: string } | null) ?? null,
+                                    entry: it.entry,
                                   }))
                                 )
                                 setHistoryStatus('ready')
@@ -290,7 +328,8 @@ export default function WorkoutLogDayPage() {
                       />
                     </div>
                   </div>
-                ))
+                )
+                })
               )}
             </div>
           )}
@@ -323,12 +362,27 @@ export default function WorkoutLogDayPage() {
                     <div className="mt-1 text-sm font-semibold">{it.workoutName || 'Workout'}</div>
                   </div>
                 </div>
-                {it.entry?.performedText ? (
-                  <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-foreground/10 bg-background/40 p-3 text-sm text-foreground/80">
-                    {String(it.entry.performedText)}
-                  </pre>
+                {it.entry ? (
+                  (() => {
+                    const det = summarizeExerciseLogDetailed(it.entry)
+                    return (
+                      <div className="mt-3 space-y-2">
+                        {det.setsLine ? (
+                          <div className="rounded-lg border border-foreground/10 bg-background/40 px-3 py-2 text-sm font-medium text-foreground/90">
+                            {det.setsLine}
+                          </div>
+                        ) : null}
+                        {det.notesLine ? (
+                          <p className="text-xs text-foreground/55">{det.notesLine}</p>
+                        ) : null}
+                        {!det.setsLine && !det.notesLine ? (
+                          <div className="text-sm text-foreground/60">No sets or notes logged.</div>
+                        ) : null}
+                      </div>
+                    )
+                  })()
                 ) : (
-                  <div className="mt-3 text-sm text-foreground/60">No detailed log text saved.</div>
+                  <div className="mt-3 text-sm text-foreground/60">No entry.</div>
                 )}
               </div>
             ))}

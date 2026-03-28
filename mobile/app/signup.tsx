@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useRouter } from 'expo-router'
 import { View, Text, TextInput, Pressable } from 'react-native'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 
 export default function SignupScreen() {
   const router = useRouter()
@@ -54,6 +54,7 @@ export default function SignupScreen() {
           setLoading(true)
           setError(null)
           try {
+            const supabase = getSupabase()
             const { error } = await supabase.auth.signUp({ email, password })
             if (error) throw error
             router.replace('/(tabs)')

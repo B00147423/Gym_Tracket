@@ -1,14 +1,12 @@
-import type { DayOfWeek, Exercise } from '@/lib/routine/types'
-import { plannedSetCount } from '@/lib/log/plannedSetCount'
+import type { DayOfWeek, Exercise } from './routineTypes'
+import { plannedSetCount } from './plannedSetCount'
 
-/** Structured set log (stored in JSON on workout_logs.exercises). */
+/** Structured set log (same JSON shape as web `lib/log/types`). */
 export type PerformedSet = {
   reps: number | null
   weight: number | null
   completed: boolean
-  /** Optional RPE (Reactive strength / effort). */
   rpe?: number | null
-  /** Optional per-set note. */
   notes?: string
 }
 
@@ -20,13 +18,12 @@ export type LoggedExercise = {
   plannedComments: string
   completed: boolean
   performedSets: PerformedSet[]
-  /** Optional session-level notes (not a substitute for structured sets). */
   performedText: string
 }
 
 export type WorkoutLog = {
   userId: string
-  workoutDate: string // YYYY-MM-DD
+  workoutDate: string
   dayOfWeek: DayOfWeek
   workoutName: string
   restDay: boolean
@@ -57,4 +54,3 @@ export function fromPlannedExercise(ex: Exercise): LoggedExercise {
     performedText: '',
   }
 }
-

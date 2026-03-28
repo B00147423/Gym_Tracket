@@ -1,4 +1,4 @@
-import { supabase } from './supabase'
+import { getSupabase } from './supabase'
 import type { RoutineSettings, WeeklyRoutine } from './routineTypes'
 
 const TABLE = 'routines'
@@ -20,6 +20,7 @@ export function createDefaultRoutineSettings(): RoutineSettings {
 }
 
 export async function loadRoutine() {
+  const supabase = getSupabase()
   const {
     data: { user },
     error: userError,
@@ -43,6 +44,7 @@ export async function loadRoutine() {
 }
 
 export async function saveRoutine(params: { weeklyRoutine: WeeklyRoutine; settings: RoutineSettings }) {
+  const supabase = getSupabase()
   const {
     data: { user },
     error: userError,

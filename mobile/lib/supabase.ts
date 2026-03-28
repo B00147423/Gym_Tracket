@@ -4,8 +4,8 @@ import { createClient } from '@supabase/supabase-js'
 import { Platform } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
 
-const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL!
-const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 
 const STORAGE_KEY = 'gt-auth'
 
@@ -26,6 +26,13 @@ let _client: ReturnType<typeof createClient> | null = null
 export function getSupabase() {
   if (_client) return _client
 
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error(
+      'Missing Supabase env vars (EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY). ' +
+        'For dev-build workflow, start Metro with `npx expo start --dev-client` so EXPO_PUBLIC_ env is injected.'
+    )
+  }
+
   const isWeb = Platform.OS === 'web'
   const isServer = typeof window === 'undefined'
 
@@ -42,6 +49,11 @@ export function getSupabase() {
   return _client
 }
 
-// Convenience default import for client components.
-export const supabase = getSupabase()
+export function tryGetSupabase(): { supabase: ReturnType<typeof createClient> | null; error: string | null } {
+  try {
+    return { supabase: getSupabase(), error: null }
+  } catch (e) {
+    return { supabase: null, error: e instanceof Error ? e.message : 'Failed to initialize Supabase' }
+  }
+}
 

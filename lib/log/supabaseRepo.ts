@@ -1,5 +1,6 @@
 import { createSupabaseBrowserClient } from '@/lib/supabase/browser'
 import type { LoggedExercise, WorkoutLog } from './types'
+import { normalizeLoggedExercise } from './performedSets'
 import { getTodayDayOfWeek, toISODateString } from '@/lib/routine/date'
 import type { WeeklyRoutine } from '@/lib/routine/types'
 import { fromPlannedExercise } from './types'
@@ -41,13 +42,14 @@ export async function loadWorkoutLogByDate(workoutDate: string): Promise<Workout
   if (error) throw error
   if (!data) return null
 
+  const rawEx = (data.exercises as LoggedExercise[] | null | undefined) ?? []
   return {
     userId: data.user_id,
     workoutDate: data.workout_date,
     dayOfWeek: data.day_of_week as WorkoutLog['dayOfWeek'],
     workoutName: data.workout_name,
     restDay: data.rest_day,
-    exercises: (data.exercises as WorkoutLog['exercises']) ?? [],
+    exercises: rawEx.map((e) => normalizeLoggedExercise(e)),
     updatedAt: data.updated_at,
   }
 }
@@ -72,7 +74,7 @@ export async function listWorkoutLogsInRange(params: { startDate: string; endDat
     dayOfWeek: r.day_of_week as WorkoutLog['dayOfWeek'],
     workoutName: r.workout_name,
     restDay: r.rest_day,
-    exercises: (r.exercises as WorkoutLog['exercises']) ?? [],
+    exercises: ((r.exercises as LoggedExercise[] | null | undefined) ?? []).map((e) => normalizeLoggedExercise(e)),
     updatedAt: r.updated_at,
   })) satisfies WorkoutLog[]
 }
@@ -124,7 +126,11 @@ export async function listExerciseHistory(params: { exerciseId: string; limit?: 
       (e) => (e as { exerciseId?: string } | null)?.exerciseId === params.exerciseId
     ) as LoggedExercise | undefined
     if (match) {
-      out.push({ workoutDate: row.workout_date, workoutName: row.workout_name, entry: match })
+      out.push({
+        workoutDate: row.workout_date,
+        workoutName: row.workout_name,
+        entry: normalizeLoggedExercise(match),
+      })
       if (out.length >= limit) break
     }
   }
@@ -147,5 +153,41 @@ export function buildDefaultLogForDate(params: {
     restDay: day.restDay,
     exercises: day.exercises.map(fromPlannedExercise),
   }
+}
+
+/** Most recent log for each exercise strictly before `workoutDate` (for "Last time" on the day screen). */
+export async function loadLastPerformancesBeforeDate(params: {
+  workoutDate: string
+  exerciseIds: string[]
+}): Promise<Record<string, LoggedExercise | null>> {
+  const empty: Record<string, LoggedExercise | null> = {}
+  for (const id of params.exerciseIds) empty[id] = null
+  if (params.exerciseIds.length === 0) return empty
+
+  const supabase = createSupabaseBrowserClient()
+  const userId = await getAuthedUserId()
+
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('workout_date, exercises')
+    .eq('user_id', userId)
+    .lt('workout_date', params.workoutDate)
+    .order('workout_date', { ascending: false })
+    .limit(120)
+
+  if (error) throw error
+
+  for (const row of (data ?? []) as { workout_date: string; exercises: unknown }[]) {
+    const exercises = row.exercises
+    if (!Array.isArray(exercises)) continue
+    for (const raw of exercises) {
+      const ex = normalizeLoggedExercise(raw as LoggedExercise)
+      if (ex.exerciseId && params.exerciseIds.includes(ex.exerciseId) && empty[ex.exerciseId] === null) {
+        empty[ex.exerciseId] = ex
+      }
+    }
+  }
+
+  return empty
 }
 

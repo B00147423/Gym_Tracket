@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { Button } from '@/app/components/ui/Button'
 import { listExerciseHistory } from '@/lib/log/supabaseRepo'
+import type { LoggedExercise } from '@/lib/log/types'
+import { summarizeExerciseLogDetailed } from '@/lib/log/performedSets'
 
 export default function ExerciseHistoryPage() {
   const params = useParams<{ exerciseId: string }>()
@@ -16,7 +18,7 @@ export default function ExerciseHistoryPage() {
     Array<{
       workoutDate: string
       workoutName: string
-      entry: { performedText?: string } | null
+      entry: LoggedExercise | null
     }>
   >([])
 
@@ -48,7 +50,7 @@ export default function ExerciseHistoryPage() {
           <div className="text-xs font-semibold tracking-wide text-foreground/60">EXERCISE HISTORY</div>
           <h1 className="mt-1 text-2xl font-semibold">Past sessions</h1>
           <p className="mt-2 text-sm text-foreground/60">
-            Logs for this exercise across previous workouts.
+            Performance from your logged sets (not just notes).
           </p>
         </div>
         <Link href="/log">
@@ -66,29 +68,39 @@ export default function ExerciseHistoryPage() {
         </div>
       ) : (
         <div className="mt-6 grid gap-3">
-          {items.map((it) => (
-            <div key={it.workoutDate} className="rounded-xl border border-foreground/10 bg-foreground/5 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-semibold tracking-wide text-foreground/60">{it.workoutDate}</div>
-                  <div className="mt-1 text-sm font-semibold">{it.workoutName || 'Workout'}</div>
+          {items.map((it) => {
+            const det = it.entry ? summarizeExerciseLogDetailed(it.entry) : { setsLine: '', notesLine: '' }
+            return (
+              <div key={it.workoutDate} className="rounded-xl border border-foreground/10 bg-foreground/5 p-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold tracking-wide text-foreground/60">{it.workoutDate}</div>
+                    <div className="mt-1 text-sm font-semibold">{it.workoutName || 'Workout'}</div>
+                  </div>
+                  <Link href={`/log/${it.workoutDate}`}>
+                    <Button variant="secondary">Open day</Button>
+                  </Link>
                 </div>
-                <Link href={`/log/${it.workoutDate}`}>
-                  <Button variant="secondary">Open day</Button>
-                </Link>
+                {it.entry ? (
+                  <div className="mt-4 space-y-2">
+                    {det.setsLine ? (
+                      <div className="rounded-lg border border-foreground/10 bg-background/40 px-4 py-3 text-sm font-medium text-foreground/90">
+                        {det.setsLine}
+                      </div>
+                    ) : null}
+                    {det.notesLine ? <p className="text-xs text-foreground/55">{det.notesLine}</p> : null}
+                    {!det.setsLine && !det.notesLine ? (
+                      <div className="text-sm text-foreground/60">No sets or notes for this day.</div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="mt-4 text-sm text-foreground/60">No entry.</div>
+                )}
               </div>
-              {it.entry?.performedText ? (
-                <pre className="mt-4 whitespace-pre-wrap rounded-lg border border-foreground/10 bg-background/40 p-4 text-sm text-foreground/80">
-                  {String(it.entry.performedText)}
-                </pre>
-              ) : (
-                <div className="mt-4 text-sm text-foreground/60">No detailed log text saved.</div>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </main>
   )
 }
-
